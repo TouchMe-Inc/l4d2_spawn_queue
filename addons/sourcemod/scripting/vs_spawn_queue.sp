@@ -13,7 +13,7 @@ public Plugin myinfo =
 	name = "VersusSpawnQueue",
 	author = "TouchMe",
 	description = "Changed Infected Spawn Behavior",
-	version = "build0000",
+	version = "build0001",
 	url = "https://github.com/TouchMe-Inc/l4d2_vs_spawn_queue"
 }
 
@@ -315,7 +315,7 @@ void SyncWithFirstQueue()
 	}
 }
 
-int GetItemFromQueue(int iItem) {
+int GetClassFromQueue(int iItem) {
 	return g_iSpawnQueue[CURRENT][iItem];
 }
 
@@ -325,16 +325,16 @@ int GetNextClassFromQueue()
 
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
 	{
-		if (GetInfectedCountByClass(g_iSpawnQueue[CURRENT][iItem]) > 0) {
+		if (GetInfectedCountByClass(GetClassFromQueue(iItem)) > 0) {
 			continue;
 		}
 
 		// If the tank is alive, then we skip the spitter and put it at the end of the queue.
-		if (IsTankInPlay() && g_iSpawnQueue[CURRENT][iItem] == SI_CLASS_SPITTER) {
+		if (IsTankInPlay() && GetClassFromQueue(iItem) == SI_CLASS_SPITTER) {
 			continue;
 		}
 
-		iClass = g_iSpawnQueue[CURRENT][iItem];
+		iClass = GetClassFromQueue(iItem);
 		break;
 	}
 
@@ -351,7 +351,7 @@ int FindClassInQueue(int iClass)
 
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
 	{
-		if (GetItemFromQueue(iItem) != iClass) {
+		if (GetClassFromQueue(iItem) != iClass) {
 			continue;
 		}
 
@@ -402,14 +402,14 @@ bool IsClientInfected(int iClient) {
 	return (GetClientTeam(iClient) == TEAM_INFECTED);
 }
 
-public int GetClientLastClass(int iClient) {
+int GetClientLastClass(int iClient) {
 	return GetEntProp(g_iResourceEntity, Prop_Send, "m_zombieClass", .element = iClient);
 }
 
-public int GetClientLastTeam(int iClient) {
+int GetClientLastTeam(int iClient) {
 	return GetEntProp(g_iResourceEntity, Prop_Send, "m_iTeam",.element = iClient);
 }
 
-public bool IsPlayerWasAlive(int iClient) {
+bool IsPlayerWasAlive(int iClient) {
 	return view_as<bool>(GetEntProp(g_iResourceEntity, Prop_Send, "m_bAlive", .element = iClient));
 }
