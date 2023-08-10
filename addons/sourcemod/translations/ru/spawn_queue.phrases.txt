@@ -1,0 +1,12 @@
+"Phrases"
+{
+	"BECOME_A_BOOMER"
+	{
+		"ru"			"Нажми <Mouse2> чтобы стать <Boomer>"
+	}
+
+	"BECOME_A_SPITTER"
+	{
+		"ru"			"Нажми <Mouse2> чтобы стать <Spitter>"
+	}
+}
