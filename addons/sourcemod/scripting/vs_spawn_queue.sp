@@ -81,7 +81,7 @@ public APLRes AskPluginLoad2(Handle myself, bool bLate, char[] sErr, int iErrLen
 	return APLRes_Success;
 }
 
-public int Native_GetClassFromQueue(Plugin hPlugin, int iParams)
+public int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 {
 	int iItem = GetNativeCell(1);
 
