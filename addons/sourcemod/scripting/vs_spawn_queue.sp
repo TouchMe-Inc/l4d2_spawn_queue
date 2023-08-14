@@ -13,7 +13,7 @@ public Plugin myinfo =
 	name = "VersusSpawnQueue",
 	author = "TouchMe",
 	description = "Changed Infected Spawn Behavior",
-	version = "build0002",
+	version = "build0003",
 	url = "https://github.com/TouchMe-Inc/l4d2_vs_spawn_queue"
 }
 
@@ -75,15 +75,26 @@ public APLRes AskPluginLoad2(Handle myself, bool bLate, char[] sErr, int iErrLen
 		return APLRes_SilentFailure;
 	}
 
+	CreateNative("GetClassFromQueue", Native_GetClassFromQueue);
+
+	RegPluginLibrary("vs_spawn_queue");
+
 	return APLRes_Success;
+}
+
+public int Native_GetClassFromQueue(Plugin hPlugin, int iParams)
+{
+	int iItem = GetNativeCell(1);
+
+	if (0 < iItem || iItem >= ORDER_SIZE) {
+		ThrowNativeError(SP_ERROR_NATIVE, "The queue consists of six elements");
+	}
+
+	return GetClassFromQueue(iItem);
 }
 
 public void OnPluginStart()
 {
-	if (GetConVarInt(FindConVar("survivor_limit")) != TEAM_SIZE) {
-		SetFailState("The plugin only supports teams of four players");
-	}
-
 	HookEvent("round_start", Event_RoundStart, EventHookMode_Pre);
 	HookEvent("round_end", Event_RoundEnd, EventHookMode_Post);
 	HookEvent("player_left_safe_area", Event_PlayerLeftSafeArea, EventHookMode_Post);
@@ -168,14 +179,13 @@ public void OnMaterializeFromGhost(int iClient)
 
 public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const float vecAng[3])
 {
-	if (g_bRoundIsLive)
-	{
-		MoveClassToEndQueue(iZombieClass = GetNextClassFromQueue());
-
-		return Plugin_Changed;
+	if (!g_bRoundIsLive) {
+		return Plugin_Handled;
 	}
 
-	return Plugin_Handled;
+	MoveClassToEndQueue(iZombieClass = GetNextClassFromQueue());
+
+	return Plugin_Changed;
 }
 
 int GetInfectedCountByClass(int iClass)
