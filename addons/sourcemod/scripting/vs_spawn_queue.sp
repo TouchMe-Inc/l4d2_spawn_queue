@@ -25,7 +25,6 @@ public Plugin myinfo =
 
 // Size
 #define ORDER_SIZE              6
-#define TEAM_SIZE               4
 
 // Team
 #define TEAM_SURVIVOR           2
