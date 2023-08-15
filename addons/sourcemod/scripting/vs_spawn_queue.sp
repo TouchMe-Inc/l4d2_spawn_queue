@@ -25,6 +25,11 @@ public Plugin myinfo =
 
 // Size
 #define ORDER_SIZE              6
+#define TEAM_SIZE               4
+
+// Gamemode
+#define GAMEMODE_VERSUS         "versus"
+#define GAMEMODE_VERSUS_REALISM "mutation12"
 
 // Team
 #define TEAM_SURVIVOR           2
@@ -48,12 +53,17 @@ public Plugin myinfo =
 
 int
 	g_iSpawnQueue[TYPES][ORDER_SIZE], /**< Starting and game queue */
+	g_iSpawnScheme = 0,
 	g_iResourceEntity = -1; /**< Find on Map or -1 */
 
 bool
 	g_bRoundIsLive = false,
+	g_bGamemodeAvailable = false, /**< Only versus mode */
 	g_bClientAttack2[MAXPLAYERS] = {false, ...};
 
+ConVar
+	g_cvGameMode = null, /**< mp_gamemode */
+	g_cvVsSpawnCheme = null;
 
 /**
  * Called before OnPluginStart.
@@ -81,7 +91,7 @@ public APLRes AskPluginLoad2(Handle myself, bool bLate, char[] sErr, int iErrLen
 	return APLRes_Success;
 }
 
-public int Native_GetClassFromQueue(Handle hPlugin, int iParams)
+int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 {
 	int iItem = GetNativeCell(1);
 
@@ -94,10 +104,28 @@ public int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 
 public void OnPluginStart()
 {
-	HookEvent("round_start", Event_RoundStart, EventHookMode_Pre);
-	HookEvent("round_end", Event_RoundEnd, EventHookMode_Post);
-	HookEvent("player_left_safe_area", Event_PlayerLeftSafeArea, EventHookMode_Post);
+	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
+	HookEvent("round_end", Event_RoundEnd, EventHookMode_PostNoCopy);
+	HookEvent("player_left_safe_area", Event_PlayerLeftSafeArea, EventHookMode_PostNoCopy);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+
+	HookConVarChange((g_cvGameMode = FindConVar("mp_gamemode")), OnGamemodeChanged);
+	HookConVarChange(
+	   (g_cvVsSpawnCheme = CreateConVar(
+			.name = "sm_vs_spawn_cheme",
+			.defaultValue = "1",
+			.description = "\
+				0 - The queue is made up of the order of deaths;\
+				1 - The queue is made up of the order of deaths + always at least 3 dominators\
+			"
+		)),
+		OnSpawnSchemeChanged
+	);
+
+	char sGameMode[16];
+	GetConVarString(g_cvGameMode, sGameMode, sizeof(sGameMode));
+	g_bGamemodeAvailable = IsVersusMode(sGameMode);
+	g_iSpawnScheme = GetConVarInt(g_cvVsSpawnCheme);
 }
 
 public void OnMapStart()
@@ -110,24 +138,70 @@ public void OnMapStart()
 	SyncWithFirstQueue();
 }
 
-void Event_RoundStart(Event event, char[] name, bool dontBroadcast) {
-	g_bRoundIsLive = false;
+/**
+ * Called when gamemode value is changed.
+ */
+public void OnGamemodeChanged(ConVar hConVar, const char[] sOldValue, const char[] sNewValue) {
+	g_bGamemodeAvailable = IsVersusMode(sNewValue);
 }
 
-void Event_RoundEnd(Event event, char[] name, bool dontBroadcast)
+/**
+ * Called when spawn cheme value is changed.
+ */
+public void OnSpawnSchemeChanged(ConVar hConVar, const char[] sOldValue, const char[] sNewValue) {
+	g_iSpawnScheme = GetConVarInt(hConVar);
+}
+
+/**
+ * Called when the map has loaded, servercfgfile (server.cfg) has been executed, and all
+ * plugin configs are done executing. This will always be called once and only once per map.
+ * It will be called after OnMapStart().
+*/
+public void OnConfigsExecuted()
 {
+	char sGameMode[16];
+	GetConVarString(g_cvGameMode, sGameMode, sizeof(sGameMode));
+	g_bGamemodeAvailable = IsVersusMode(sGameMode);
+}
+
+public Action Event_RoundStart(Event event, char[] name, bool dontBroadcast)
+{
+	if (g_bGamemodeAvailable == false) {
+		return Plugin_Continue;
+	}
+
+	g_bRoundIsLive = false;
+
+	return Plugin_Continue;
+}
+
+public Action Event_RoundEnd(Event event, char[] name, bool dontBroadcast)
+{
+	if (g_bGamemodeAvailable == false) {
+		return Plugin_Continue;
+	}
+
 	g_bRoundIsLive = false;
 
 	SyncWithFirstQueue();
+
+	return Plugin_Continue;
 }
 
-void Event_PlayerLeftSafeArea(Event event, char[] name, bool dontBroadcast) {
-	g_bRoundIsLive = true;
-}
-
-Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+public Action Event_PlayerLeftSafeArea(Event event, char[] name, bool dontBroadcast)
 {
-	if (!g_bRoundIsLive) {
+	if (g_bGamemodeAvailable == false) {
+		return Plugin_Continue;
+	}
+
+	g_bRoundIsLive = true;
+
+	return Plugin_Continue;
+}
+
+public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	if (g_bGamemodeAvailable == false || !g_bRoundIsLive) {
 		return Plugin_Continue;
 	}
 
@@ -151,7 +225,7 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 public void OnEnterGhostState(int iClient)
 {
-	if (!IsClientGhost(iClient)) {
+	if (g_bGamemodeAvailable == false || !IsClientGhost(iClient)) {
 		return;
 	}
 
@@ -166,7 +240,8 @@ public void OnEnterGhostState(int iClient)
 
 public void OnMaterializeFromGhost(int iClient)
 {
-	if (!g_bRoundIsLive
+	if (g_bGamemodeAvailable == false
+	|| !g_bRoundIsLive
 	|| !IsValidClient(iClient)
 	|| !IsClientInGame(iClient)
 	|| !IsClientInfected(iClient)) {
@@ -178,7 +253,7 @@ public void OnMaterializeFromGhost(int iClient)
 
 public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const float vecAng[3])
 {
-	if (!g_bRoundIsLive) {
+	if (g_bGamemodeAvailable == false || !g_bRoundIsLive) {
 		return Plugin_Handled;
 	}
 
@@ -227,7 +302,8 @@ int GetSupportCount()
 
 public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float vVel[3], float vAngles[3], int &iWeapon)
 {
-	if (!IsTankInPlay()
+	if (g_bGamemodeAvailable == false
+	|| !IsTankInPlay()
 	|| !IsClientInfected(iClient)
 	|| !IsClientGhost(iClient)
 	|| GetSupportCount() > 1) {
@@ -317,7 +393,15 @@ int GetNextClassFromQueue()
 
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
 	{
-		if (GetInfectedCountByClass(GetClassFromQueue(iItem)) > 0) {
+		int iTempClass = GetClassFromQueue(iItem);
+
+		if (GetInfectedCountByClass(iTempClass) > 0) {
+			continue;
+		}
+
+		if (g_iSpawnScheme == 1
+		&& IsSupportClass(iTempClass)
+		&& GetSupportCount() >= 1) {
 			continue;
 		}
 
@@ -395,4 +479,16 @@ int GetClientLastTeam(int iClient) {
 
 bool IsPlayerWasAlive(int iClient) {
 	return view_as<bool>(GetEntProp(g_iResourceEntity, Prop_Send, "m_bAlive", .element = iClient));
+}
+
+/**
+ * Is the game mode versus.
+ *
+ * @param sGameMode         A string containing the name of the game mode.
+ *
+ * @return                  Returns true if verus, otherwise false.
+ */
+bool IsVersusMode(const char[] sGameMode) {
+	return (StrEqual(sGameMode, GAMEMODE_VERSUS, false)
+	|| StrEqual(sGameMode, GAMEMODE_VERSUS_REALISM, false));
 }
