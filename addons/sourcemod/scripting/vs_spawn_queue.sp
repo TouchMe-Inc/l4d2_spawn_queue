@@ -116,7 +116,7 @@ public void OnPluginStart()
 			.defaultValue = "1",
 			.description = "\
 				0 - The queue is made up of the order of deaths;\
-				1 - The queue is made up of the order of deaths + always at least 3 dominators\
+				1 - Coming Soon\
 			"
 		)),
 		OnSpawnSchemeChanged
@@ -399,13 +399,13 @@ int GetNextClassFromQueue()
 			continue;
 		}
 
-		if (g_iSpawnScheme == 1
-		&& IsSupportClass(iTempClass)
-		&& GetSupportCount() >= 1) {
-			continue;
-		}
+		//if (g_iSpawnScheme == 1
+		//&& IsSupportClass(iTempClass)
+		//&& GetSupportCount() >= 1) {
+		//	continue;
+		//}
 
-		iClass = GetClassFromQueue(iItem);
+		iClass = iTempClass;
 		break;
 	}
 
