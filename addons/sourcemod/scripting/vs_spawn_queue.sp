@@ -130,12 +130,8 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
-	g_iResourceEntity = GetResourceEntity();
 	g_bRoundIsLive = false;
-
-	ResetFirstQueue();
-	PrepareFirstQueue();
-	SyncWithFirstQueue();
+	g_iResourceEntity = GetResourceEntity();
 }
 
 /**
@@ -168,6 +164,13 @@ public Action Event_RoundStart(Event event, char[] name, bool dontBroadcast)
 {
 	if (g_bGamemodeAvailable == false) {
 		return Plugin_Continue;
+	}
+
+	if (!InSecondHalfOfRound())
+	{
+		ResetFirstQueue();
+		PrepareFirstQueue();
+		SyncWithFirstQueue();
 	}
 
 	g_bRoundIsLive = false;
@@ -485,6 +488,15 @@ bool IsPlayerWasAlive(int iClient) {
 
 bool IsPlayerWasTank(int iClient) {
 	return (GetClientLastClass(iClient) == SI_CLASS_TANK);
+}
+
+/**
+ * Checks if the current round is the second.
+ *
+ * @return                  Returns true if is second round, otherwise false.
+ */
+bool InSecondHalfOfRound() {
+	return view_as<bool>(GameRules_GetProp("m_bInSecondHalfOfRound"));
 }
 
 /**
