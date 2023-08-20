@@ -13,7 +13,7 @@ public Plugin myinfo =
 	name = "VersusSpawnQueue",
 	author = "TouchMe",
 	description = "Changed Infected Spawn Behavior",
-	version = "build0003",
+	version = "build0004",
 	url = "https://github.com/TouchMe-Inc/l4d2_vs_spawn_queue"
 }
 
@@ -181,9 +181,11 @@ public Action Event_RoundEnd(Event event, char[] name, bool dontBroadcast)
 		return Plugin_Continue;
 	}
 
-	g_bRoundIsLive = false;
-
-	SyncWithFirstQueue();
+	if (g_bRoundIsLive == true) {
+		g_bRoundIsLive = false;
+	} else {
+		SyncWithFirstQueue();
+	}
 
 	return Plugin_Continue;
 }
@@ -233,7 +235,7 @@ public void OnEnterGhostState(int iClient)
 
 	if (!bIsPlayerWasAlive /**< The player has just joined */
 	|| GetClientLastTeam(iClient) == TEAM_SURVIVOR /**< Transferred from the Survivor Team */
-	|| (IsTankInPlay() && bIsPlayerWasAlive && GetClientLastClass(iClient) == SI_CLASS_TANK)) { /**< Was Tank and lost control */
+	|| (IsTankInPlay() && bIsPlayerWasAlive && IsPlayerWasTank(iClient))) { /**< Was Tank and lost control */
 		SetClientClass(iClient, GetNextClassFromQueue());
 	}
 }
@@ -479,6 +481,10 @@ int GetClientLastTeam(int iClient) {
 
 bool IsPlayerWasAlive(int iClient) {
 	return view_as<bool>(GetEntProp(g_iResourceEntity, Prop_Send, "m_bAlive", .element = iClient));
+}
+
+bool IsPlayerWasTank(int iClient) {
+	return (GetClientLastClass(iClient) == SI_CLASS_TANK);
 }
 
 /**
