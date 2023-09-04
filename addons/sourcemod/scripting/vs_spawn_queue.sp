@@ -290,7 +290,7 @@ int GetSupportCount()
 {
 	int iSupportCount = 0;
 
-	for (int iClient = 1; iClient < MaxClients; iClient ++)
+	for (int iClient = 1; iClient <= MaxClients; iClient ++)
 	{
 		if (!IsClientInGame(iClient)
 		|| !IsClientInfected(iClient)
