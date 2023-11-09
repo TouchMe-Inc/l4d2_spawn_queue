@@ -18,13 +18,19 @@ public Plugin myinfo =
 }
 
 
+#define TRANSLATIONS            "spawn_queue.phrases"
+
 // Queue
 #define FIRST                   0
 #define CURRENT                 1
-#define TYPES                   2
 
 // Size
+#define TYPE_SIZE               2
 #define ORDER_SIZE              6
+
+// Scheme
+#define SCHEME_QUAD             0
+#define SCHEME_NO_QUAD          1
 
 // Team
 #define TEAM_SURVIVOR           2
@@ -42,12 +48,11 @@ public Plugin myinfo =
 #define OnSpawnSpecial          L4D_OnSpawnSpecial
 #define IsTankInPlay            L4D2_IsTankInPlay
 #define OnEnterGhostState       L4D_OnEnterGhostState
-#define OnMaterializeFromGhost  L4D_OnMaterializeFromGhost
 #define GetResourceEntity       L4D_GetResourceEntity
 
 
 int
-	g_iSpawnQueue[TYPES][ORDER_SIZE], /**< Starting and game queue */
+	g_iSpawnQueue[TYPE_SIZE][ORDER_SIZE], /**< Starting and game queue */
 	g_iSpawnScheme = 0,
 	g_iResourceEntity = -1; /**< Find on Map or -1 */
 
@@ -55,7 +60,7 @@ bool
 	g_bRoundIsLive = false,
 	g_bClientAttack2[MAXPLAYERS] = {false, ...};
 
-ConVar g_cvVsSpawnCheme = null; /**< sm_vs_spawn_cheme */
+ConVar g_cvSpawnCheme = null; /**< sm_vs_spawn_cheme */
 
 
 /**
@@ -103,15 +108,15 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 
 	HookConVarChange(
-		(g_cvVsSpawnCheme = CreateConVar(
-			.name = "sm_vs_spawn_cheme",
-			.defaultValue = "1",
-			.description = "0 - The queue is made up of the order of deaths; 1 - Coming Soon"
+		(g_cvSpawnCheme = CreateConVar(
+			.name = "sm_spawn_cheme",
+			.defaultValue = "0",
+			.description = "The queue is made up of the order of deaths: 0 - With quads; 1 - Without quads"
 		)),
 		OnSpawnSchemeChanged
 	);
 
-	g_iSpawnScheme = GetConVarInt(g_cvVsSpawnCheme);
+	g_iSpawnScheme = GetConVarInt(g_cvSpawnCheme);
 }
 
 public void OnMapInit(const char[] sMap)
@@ -136,6 +141,9 @@ void Event_RoundStart(Event event, char[] name, bool dontBroadcast)
 
 	int iQueueIndex = 0;
 
+	/*
+	 * Installing classes from the first queue.
+	 */
 	for (int iClient = 1; iClient <= MaxClients; iClient ++)
 	{
 		if (!IsClientInGame(iClient) || !IsClientInfected(iClient)) {
@@ -165,7 +173,7 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		return Plugin_Continue;
 	}
 
-	int iClient = GetClientOfUserId(event.GetInt("userid"));
+	int iClient = GetClientOfUserId(GetEventInt(event, "userid"));
 
 	if (!IsValidClient(iClient) || !IsClientInfected(iClient)) {
 		return Plugin_Continue;
@@ -184,11 +192,11 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 public void OnEnterGhostState(int iClient)
 {
-	bool bIsPlayerWasAlive = IsPlayerWasAlive(iClient);
+	bool bIsClientWasAlive = IsClientWasAlive(iClient);
 
-	if (!bIsPlayerWasAlive /**< The player has just joined */
-	|| GetClientLastTeam(iClient) == TEAM_SURVIVOR /**< Transferred from the Survivor Team */
-	|| (IsTankInPlay() && bIsPlayerWasAlive && IsPlayerWasTank(iClient))) /**< Was Tank and lost control */
+	if (!bIsClientWasAlive /*< The player has just joined */
+	|| GetClientLastTeam(iClient) == TEAM_SURVIVOR /*< Transferred from the Survivor Team */
+	|| (IsTankInPlay() && bIsClientWasAlive && IsClientWasTank(iClient))) /*< Was Tank and lost control */
 	{
 		SetClientClass(iClient, GetNextClassFromQueue(GetClientClass(iClient)));
 	}
@@ -210,16 +218,20 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float vV
 	if (!IsTankInPlay()
 	|| !IsClientInfected(iClient)
 	|| !IsClientGhost(iClient)
-	|| GetSupportCount()) {
+	|| GetSupportCount() > 1) {
 		return Plugin_Continue;
 	}
 
-	// Player was holding m2, and now isn't. (Released)
+	/*
+	 * Player was holding m2, and now isn't.
+	 */
 	if (iButtons & IN_ATTACK2 != IN_ATTACK2 && g_bClientAttack2[iClient]) {
 		g_bClientAttack2[iClient] = false;
 	}
 
-	// Player was not holding m2, and now is. (Pressed)
+	/*
+	 * Player was not holding m2, and now is.
+	 */
 	if (iButtons & IN_ATTACK2 == IN_ATTACK2 && !g_bClientAttack2[iClient])
 	{
 		g_bClientAttack2[iClient] = true;
@@ -286,11 +298,13 @@ int GetClassFromQueue(int iItem) {
 	return g_iSpawnQueue[CURRENT][iItem];
 }
 
-int GetNextClassFromQueue(int iAlreadyClass)
+int GetNextClassFromQueue(int iPriorityClass)
 {
 	int iClass = -1;
 
-	// If the tank is alive, then we skip the spitter and put it at the end of the queue.
+	/*
+	 * If the tank is alive, then we skip the spitter and put it at the end of the queue.
+	 */
 	if (IsTankInPlay()) {
 		MoveClassToEndQueue(SI_CLASS_SPITTER);
 	}
@@ -299,7 +313,7 @@ int GetNextClassFromQueue(int iAlreadyClass)
 	{
 		int iTempClass = GetClassFromQueue(iItem);
 
-		if (GetInfectedCountByClass(iTempClass) && iTempClass != iAlreadyClass) {
+		if (GetInfectedCountByClass(iTempClass) && iTempClass != iPriorityClass) {
 			continue;
 		}
 
@@ -394,6 +408,13 @@ bool IsSupportClass(int iClass) {
 }
 
 /**
+ * The class is in the dominator pool.
+ */
+bool IsDominatorClass(int iClass) {
+	return !IsSupportClass(iClass);
+}
+
+/**
  * Get the zombie player class.
  */
 int GetClientClass(int iClient) {
@@ -401,41 +422,50 @@ int GetClientClass(int iClient) {
 }
 
 /**
- * Is the player a ghost?
+ * Returns whether the player is a ghost.
  */
 bool IsClientGhost(int iClient) {
 	return view_as<bool>(GetEntProp(iClient, Prop_Send, "m_isGhost"));
 }
 
 /**
- * Player with correct index?
+ * Returns whether an entity is a player.
  */
 bool IsValidClient(int iClient) {
 	return (iClient > 0 && iClient <= MaxClients);
 }
 
 /**
- * Infected team player?
+ * Returns whether the player is infected.
  */
 bool IsClientInfected(int iClient) {
 	return (GetClientTeam(iClient) == TEAM_INFECTED);
 }
 
 /**
- * Was the player a tank?
+ * Returns whether the player was a Tank.
  */
-bool IsPlayerWasTank(int iClient) {
+bool IsClientWasTank(int iClient) {
 	return (GetClientLastClass(iClient) == SI_CLASS_TANK);
 }
 
+/**
+ * Retrieve the previous zombie player class.
+ */
 int GetClientLastClass(int iClient) {
 	return GetEntProp(g_iResourceEntity, Prop_Send, "m_zombieClass", .element = iClient);
 }
 
+/**
+ * Get player's previous team.
+ */
 int GetClientLastTeam(int iClient) {
 	return GetEntProp(g_iResourceEntity, Prop_Send, "m_iTeam", .element = iClient);
 }
 
-bool IsPlayerWasAlive(int iClient) {
+/**
+ * Returns whether the player was alive.
+ */
+bool IsClientWasAlive(int iClient) {
 	return view_as<bool>(GetEntProp(g_iResourceEntity, Prop_Send, "m_bAlive", .element = iClient));
 }
