@@ -12,38 +12,50 @@ public Plugin myinfo =
 {
 	name = "VersusSpawnQueue",
 	author = "TouchMe",
-	description = "Changed Infected Spawn Behavior",
+	description = "The plugin sets the queue of infected in the order of their death",
 	version = "build0009",
-	url = "https://github.com/TouchMe-Inc/l4d2_vs_spawn_queue"
+	url = "https://github.com/TouchMe-Inc/l4d2_spawn_queue"
 }
 
 
 #define TRANSLATIONS            "spawn_queue.phrases"
 
-// Queue
+/*
+ * Queue.
+ */
 #define FIRST                   0
 #define CURRENT                 1
 
-// Size
+/*
+ * Size.
+ */
 #define TYPE_SIZE               2
 #define ORDER_SIZE              6
 
-// Scheme
+/*
+ * Scheme.
+ */
 #define SCHEME_QUAD             0
 #define SCHEME_NO_QUAD          1
 
-// Team
+/*
+ * Team.
+ */
 #define TEAM_SURVIVOR           2
 #define TEAM_INFECTED           3
 
-// Infected Class
+/*
+ * Infected Class.
+ */
 #define SI_CLASS_SMOKER         1
 #define SI_CLASS_BOOMER         2
 #define SI_CLASS_SPITTER        4
 #define SI_CLASS_CHARGER        6
 #define SI_CLASS_TANK           8
 
-// Sugar
+/*
+ * Sugar for left4dhooks.
+ */
 #define SetClientClass          L4D_SetClass
 #define OnSpawnSpecial          L4D_OnSpawnSpecial
 #define IsTankInPlay            L4D2_IsTankInPlay
@@ -58,7 +70,7 @@ int
 
 bool
 	g_bRoundIsLive = false,
-	g_bClientAttack2[MAXPLAYERS] = {false, ...};
+	g_bClientAttack2[MAXPLAYERS + 1] = {false, ...};
 
 ConVar g_cvSpawnCheme = null; /**< sm_vs_spawn_cheme */
 
@@ -94,7 +106,7 @@ int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 	int iItem = GetNativeCell(1);
 
 	if (0 < iItem || iItem >= ORDER_SIZE) {
-		ThrowNativeError(SP_ERROR_NATIVE, "The queue consists of six elements");
+		ThrowNativeError(SP_ERROR_NATIVE, "The parameter must have a value from 0 to 5");
 	}
 
 	return GetClassFromQueue(iItem);
@@ -102,6 +114,14 @@ int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 
 public void OnPluginStart()
 {
+	/*
+	 * Load translations.
+	 */
+	LoadTranslations(TRANSLATIONS);
+
+	/*
+	 * Hook events.
+	 */
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundEnd, EventHookMode_PostNoCopy);
 	HookEvent("player_left_safe_area", Event_PlayerLeftSafeArea, EventHookMode_PostNoCopy);
@@ -236,20 +256,18 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float vV
 	{
 		g_bClientAttack2[iClient] = true;
 
-		int iZombieClass = GetClientClass(iClient);
-
-		switch (iZombieClass)
+		switch (GetClientClass(iClient))
 		{
 			case SI_CLASS_BOOMER:
 			{
 				SetClientClass(iClient, SI_CLASS_SPITTER);
-				PrintHintText(iClient, "Press <Mouse2> to become a <Boomer>.");
+				PrintHintText(iClient, "%T", "BECOME_A_BOOMER", iClient);
 			}
 
 			case SI_CLASS_SPITTER:
 			{
 				SetClientClass(iClient, SI_CLASS_BOOMER);
-				PrintHintText(iClient, "Press <Mouse2> to become a <Spitter>.");
+				PrintHintText(iClient, "%T", "BECOME_A_SPITTER", iClient);
 			}
 		}
 
