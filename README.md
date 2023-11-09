@@ -1,2 +1,2 @@
-# About vs_spawn_queue
-Changed Infected Spawn Behavior.
+# About spawn_queue
+The plugin sets the queue of infected in the order of their death.
