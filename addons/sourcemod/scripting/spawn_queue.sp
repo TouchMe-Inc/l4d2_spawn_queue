@@ -13,7 +13,7 @@ public Plugin myinfo =
 	name = "VersusSpawnQueue",
 	author = "TouchMe",
 	description = "The plugin sets the queue of infected in the order of their death",
-	version = "build0009",
+	version = "build0010",
 	url = "https://github.com/TouchMe-Inc/l4d2_spawn_queue"
 }
 
@@ -64,8 +64,8 @@ public Plugin myinfo =
 
 
 int
-	g_iSpawnQueue[TYPE_SIZE][ORDER_SIZE], /**< Starting and game queue */
-	g_iSpawnScheme = 0,
+	g_iSpawnScheme = 0, /**< sm_vs_spawn_cheme buffer */
+	g_iSpawnQueue[TYPE_SIZE][ORDER_SIZE], /**< Starting and game queue */ 
 	g_iResourceEntity = -1; /**< Find on Map or -1 */
 
 bool
@@ -101,6 +101,9 @@ public APLRes AskPluginLoad2(Handle myself, bool bLate, char[] sErr, int iErrLen
 	return APLRes_Success;
 }
 
+/**
+ * Returning a class from a queue by item.
+ */
 int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 {
 	int iItem = GetNativeCell(1);
@@ -112,6 +115,9 @@ int Native_GetClassFromQueue(Handle hPlugin, int iParams)
 	return GetClassFromQueue(iItem);
 }
 
+/**
+ * Called when the plugin is fully initialized and all known external references are resolved.
+ */
 public void OnPluginStart()
 {
 	/*
@@ -127,6 +133,9 @@ public void OnPluginStart()
 	HookEvent("player_left_safe_area", Event_PlayerLeftSafeArea, EventHookMode_PostNoCopy);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 
+	/*
+	 * Console variables.
+	 */
 	HookConVarChange(
 		(g_cvSpawnCheme = CreateConVar(
 			.name = "sm_spawn_cheme",
@@ -139,11 +148,21 @@ public void OnPluginStart()
 	g_iSpawnScheme = GetConVarInt(g_cvSpawnCheme);
 }
 
+/**
+ * Filling out the first queue for teams.
+ */
 public void OnMapInit(const char[] sMap)
 {
 	ResetFirstQueue();
-	PrepareFirstQueue();
+	GenerateFirstQueue();
 	SyncWithFirstQueue();
+}
+
+/**
+ * Finding Resource Entity.
+ */
+public void OnMapStart() {
+	g_iResourceEntity = GetResourceEntity();
 }
 
 /**
@@ -153,27 +172,23 @@ public void OnSpawnSchemeChanged(ConVar hConVar, const char[] sOldValue, const c
 	g_iSpawnScheme = GetConVarInt(hConVar);
 }
 
-void Event_RoundStart(Event event, char[] name, bool dontBroadcast)
-{
+/**
+ * Setting the round status.
+ */
+void Event_RoundStart(Event event, char[] name, bool dontBroadcast) {
 	g_bRoundIsLive = false;
-
-	g_iResourceEntity = GetResourceEntity();
-
-	int iQueueIndex = 0;
-
-	/*
-	 * Installing classes from the first queue.
-	 */
-	for (int iClient = 1; iClient <= MaxClients; iClient ++)
-	{
-		if (!IsClientInGame(iClient) || !IsClientInfected(iClient)) {
-			continue;
-		}
-
-		SetClientClass(iClient, GetClassFromQueue(iQueueIndex++));
-	}
 }
 
+/**
+ * Setting the round status.
+ */
+void Event_PlayerLeftSafeArea(Event event, char[] name, bool dontBroadcast) {
+	g_bRoundIsLive = true;
+}
+
+/**
+ * Setting the round status.
+ */
 void Event_RoundEnd(Event event, char[] name, bool dontBroadcast)
 {
 	if (g_bRoundIsLive == true) {
@@ -183,10 +198,9 @@ void Event_RoundEnd(Event event, char[] name, bool dontBroadcast)
 	}
 }
 
-void Event_PlayerLeftSafeArea(Event event, char[] name, bool dontBroadcast) {
-	g_bRoundIsLive = true;
-}
-
+/**
+ * Send all dead infected to the end of the queue.
+ */
 Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!g_bRoundIsLive) {
@@ -210,18 +224,24 @@ Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	return Plugin_Continue;
 }
 
+/**
+ * Setting the class of a special infected player.
+ */
 public void OnEnterGhostState(int iClient)
 {
 	bool bIsClientWasAlive = IsClientWasAlive(iClient);
 
 	if (!bIsClientWasAlive /*< The player has just joined */
-	|| GetClientLastTeam(iClient) == TEAM_SURVIVOR /*< Transferred from the Survivor Team */
+	|| (GetClientLastTeam(iClient) == TEAM_SURVIVOR) /*< Transferred from the Survivor Team */
 	|| (IsTankInPlay() && bIsClientWasAlive && IsClientWasTank(iClient))) /*< Was Tank and lost control */
 	{
 		SetClientClass(iClient, GetNextClassFromQueue(GetClientClass(iClient)));
 	}
 }
 
+/**
+ * Setting the class of a special infected bot.
+ */
 public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const float vecAng[3])
 {
 	if (!g_bRoundIsLive) {
@@ -233,12 +253,16 @@ public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const flo
 	return Plugin_Changed;
 }
 
+/**
+ * Switching si class from Boomer to Spitter during the life of the tank.
+ * Called when a clients movement buttons are being processed.
+ */
 public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float vVel[3], float vAngles[3], int &iWeapon)
 {
 	if (!IsTankInPlay()
 	|| !IsClientInfected(iClient)
 	|| !IsClientGhost(iClient)
-	|| GetSupportCount() > 1) {
+	|| GetInfectedCount(Filter_SupportOnly) > 1) {
 		return Plugin_Continue;
 	}
 
@@ -278,6 +302,9 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float vV
 	return Plugin_Continue;
 }
 
+/**
+ * The function prepares the queue to be filled.
+ */
 void ResetFirstQueue()
 {
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
@@ -286,7 +313,10 @@ void ResetFirstQueue()
 	}
 }
 
-void PrepareFirstQueue()
+/**
+ * Filling the queue of infected in random order.
+ */
+void GenerateFirstQueue()
 {
 	for (int iZombieClass = SI_CLASS_SMOKER; iZombieClass <= SI_CLASS_CHARGER; iZombieClass ++)
 	{
@@ -304,6 +334,9 @@ void PrepareFirstQueue()
 	}
 }
 
+/**
+ * Copy the first queue to the current one.
+ */
 void SyncWithFirstQueue()
 {
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
@@ -312,14 +345,18 @@ void SyncWithFirstQueue()
 	}
 }
 
+/**
+ * Returning a class from a queue by item.
+ */
 int GetClassFromQueue(int iItem) {
 	return g_iSpawnQueue[CURRENT][iItem];
 }
 
-int GetNextClassFromQueue(int iPriorityClass)
+/**
+ *
+ */
+int GetNextClassFromQueue(int iCurrentClass)
 {
-	int iClass = -1;
-
 	/*
 	 * If the tank is alive, then we skip the spitter and put it at the end of the queue.
 	 */
@@ -329,19 +366,25 @@ int GetNextClassFromQueue(int iPriorityClass)
 
 	for (int iItem = 0; iItem < ORDER_SIZE; iItem ++)
 	{
-		int iTempClass = GetClassFromQueue(iItem);
+		int iNextClass = GetClassFromQueue(iItem);
 
-		if (GetInfectedCountByClass(iTempClass) && iTempClass != iPriorityClass) {
+		if (iNextClass == iCurrentClass) {
+			return iNextClass;
+		}
+
+		if (GetInfectedCount(Filter_ByClass, iNextClass)) {
 			continue;
 		}
 
-		iClass = iTempClass;
-		break;
+		return iNextClass;
 	}
 
-	return iClass;
+	return -1;
 }
 
+/**
+ * Find an element in a queue by its class.
+ */
 int FindClassInQueue(int iClass)
 {
 	int iFoundIndex = -1;
@@ -359,6 +402,9 @@ int FindClassInQueue(int iClass)
 	return iFoundIndex;
 }
 
+/**
+ * Sends the specified class to the end of the queue.
+ */
 void MoveClassToEndQueue(int iClass)
 {
 	int iFoundIndex = FindClassInQueue(iClass);
@@ -375,15 +421,33 @@ void MoveClassToEndQueue(int iClass)
 	g_iSpawnQueue[CURRENT][ORDER_SIZE - 1] = iClass;
 }
 
-int GetInfectedCountByClass(int iClass)
+typeset Filter
+{
+	function bool(int iClient);
+	function bool(int iClient, any data);
+};
+
+/**
+ *
+ */
+int GetInfectedCount(Filter filter, any data = INVALID_HANDLE)
 {
 	int iInfectedCount = 0;
 
 	for (int iClient = 1; iClient <= MaxClients; iClient ++)
 	{
-		if (!IsClientInGame(iClient)
-		|| !IsClientInfected(iClient)
-		|| GetClientClass(iClient) != iClass) {
+		if (!IsClientInGame(iClient) || !IsClientInfected(iClient)) {
+			continue;
+		}
+
+		bool bPassedFiltering = false;
+
+		Call_StartFunction(INVALID_HANDLE, filter);
+		Call_PushCell(iClient);
+		Call_PushCell(data);
+		Call_Finish(bPassedFiltering);
+
+		if (!bPassedFiltering) {
 			continue;
 		}
 
@@ -393,22 +457,25 @@ int GetInfectedCountByClass(int iClass)
 	return iInfectedCount;
 }
 
-int GetSupportCount()
-{
-	int iSupportCount = 0;
+/**
+ *
+ */
+bool Filter_SupportOnly(int iClient) {
+	return IsSupportClass(GetClientClass(iClient));
+}
 
-	for (int iClient = 1; iClient <= MaxClients; iClient ++)
-	{
-		if (!IsClientInGame(iClient)
-		|| !IsClientInfected(iClient)
-		|| !IsSupportClass(GetClientClass(iClient))) {
-			continue;
-		}
+/**
+ *
+ */
+bool Filter_AliveDominatorOnly(int iClient) {
+	return IsDominatorClass(GetClientClass(iClient)) && IsPlayerAlive(iClient);
+}
 
-		iSupportCount ++;
-	}
-
-	return iSupportCount;
+/**
+ *
+ */
+bool Filter_ByClass(int iClient, int iClass) {
+	return (GetClientClass(iClient) == iClass);
 }
 
 /**
@@ -429,7 +496,7 @@ bool IsSupportClass(int iClass) {
  * The class is in the dominator pool.
  */
 bool IsDominatorClass(int iClass) {
-	return !IsSupportClass(iClass);
+	return (IsSupportClass(iClass) == false);
 }
 
 /**
