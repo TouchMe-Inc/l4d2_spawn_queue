@@ -248,7 +248,7 @@ public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const flo
 		return Plugin_Handled;
 	}
 
-	MoveClassToEndQueue(iZombieClass = GetNextClassFromQueue(iZombieClass));
+	MoveClassToEndQueue(iZombieClass = GetNextClassFromQueue(-1));
 
 	return Plugin_Changed;
 }
