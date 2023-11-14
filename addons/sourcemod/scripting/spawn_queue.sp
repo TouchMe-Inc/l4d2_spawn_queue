@@ -58,6 +58,7 @@ public Plugin myinfo =
  */
 #define SetClientClass          L4D_SetClass
 #define OnSpawnSpecial          L4D_OnSpawnSpecial
+#define OnSpawnSpecial_Post     L4D_OnSpawnSpecial_Post
 #define IsTankInPlay            L4D2_IsTankInPlay
 #define OnEnterGhostState       L4D_OnEnterGhostState
 #define GetResourceEntity       L4D_GetResourceEntity
@@ -248,9 +249,17 @@ public Action OnSpawnSpecial(int &iZombieClass, const float vecPos[3], const flo
 		return Plugin_Handled;
 	}
 
-	MoveClassToEndQueue(iZombieClass = GetNextClassFromQueue(-1));
+	iZombieClass = GetNextClassFromQueue(-1);
 
 	return Plugin_Changed;
+}
+
+/**
+ * Move to end special infected class for bots.
+ */
+public void OnSpawnSpecial_Post(int iClient, int iZombieClass, const float vecPos[3], const float vecAng[3])
+{
+	MoveClassToEndQueue(iZombieClass);
 }
 
 /**
