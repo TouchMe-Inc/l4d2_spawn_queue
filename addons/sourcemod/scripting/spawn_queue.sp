@@ -12,7 +12,7 @@ public Plugin myinfo =
     name        = "VersusSpawnQueue",
     author      = "TouchMe",
     description = "The plugin sets the queue of infected in the order of their death",
-    version     = "build0003",
+    version     = "build0004",
     url         = "https://github.com/TouchMe-Inc/l4d2_spawn_queue"
 }
 
@@ -240,7 +240,7 @@ public void OnPluginStart()
      */
     HookConVarChange(g_cvInfectedLimit, OnInfectedLimitChanged);
     HookConVarChange(g_cvGhostDelay, OnGhostDelayChanged);
-    
+
     HookConVarChange(g_cvSmokerLimit, OnSmokerLimitChanged);
     HookConVarChange(g_cvBoomerLimit, OnBoomerLimitChanged);
     HookConVarChange(g_cvJockeyLimit, OnJockeyLimitChanged);
@@ -372,6 +372,10 @@ void Event_RoundStart(Event event, char[] szEventName, bool bDontBroadcast)
 {
     g_bRoundIsLive = false;
     g_iSupportDeathAt = 0;
+
+    if (InSecondHalfOfRound()) {
+        ValidateFirstQueue();
+    }
 }
 
 /**
@@ -453,14 +457,12 @@ void Event_PlayerDeath(Event event, const char[] szEventName, bool bDontBroadcas
     if (IsSupportClass(iInfectedClass)) {
         g_iSupportDeathAt = GetTime();
     }
+
+    g_bInfectedWithClass[iClient] = false;
 }
 
 public Action OnEnterGhostStatePre(int iClient)
 {
-    if (IsFakeClient(iClient)) {
-        return Plugin_Continue;
-    }
-
     static int s_iOffs_m_bPZAbortedControl = -1;
     if (s_iOffs_m_bPZAbortedControl == -1) {
         s_iOffs_m_bPZAbortedControl = FindSendPropInfo("CTerrorPlayer", "m_bSurvivorGlowEnabled") + 1;
@@ -478,10 +480,6 @@ public Action OnEnterGhostStatePre(int iClient)
  */
 public void OnEnterGhostState(int iClient)
 {
-    if (IsFakeClient(iClient)) {
-        return;
-    }
-
     if (g_bInfectedWithClass[iClient]) {
         return;
     }
@@ -521,6 +519,8 @@ public void OnSpawnSpecial_Post(int iClient, int iInfectedClass, const float vPo
     if (!g_bRoundIsLive) {
         return;
     }
+
+    g_bInfectedWithClass[iClient] = true;
 
     MoveClassToEndQueue(iInfectedClass);
 }
@@ -621,7 +621,7 @@ void GenerateFirstQueue()
     else
     {
         int iOffset = 0;
-    
+
         for (int iInfectedClass = SI_CLASS_SMOKER; iInfectedClass <= SI_CLASS_CHARGER; iInfectedClass++)
         {
             int iBit = (1 << (iInfectedClass - 1));
@@ -659,6 +659,60 @@ void SyncWithFirstQueue()
     {
         PushArrayCell(g_hCurrentQueue, GetArrayCell(g_hFirstQueue, iIndex));
     }
+}
+
+void ValidateFirstQueue()
+{
+    bool[] bChecked = new bool[MaxClients + 1];
+    int[] iGhostPlayers = new int[MaxClients + 1];
+    int iGhostCount = 0;
+
+    for (int iClient = 1; iClient <= MaxClients; iClient++)
+    {
+        if (!IsClientInGame(iClient) || !IsClientInfected(iClient)) {
+            continue;
+        }
+
+        if (!IsFakeClient(iClient) && IsClientGhost(iClient)) {
+            iGhostPlayers[iGhostCount++] = iClient;
+        }
+    }
+
+    Handle hFirstWaveClasses = CreateArray();
+
+    for (int i = 0; i < iGhostCount && i < GetArraySize(g_hCurrentQueue); i++)
+    {
+        PushArrayCell(hFirstWaveClasses, GetArrayCell(g_hCurrentQueue, i));
+    }
+
+    for (int i = 0; i < iGhostCount; i++)
+    {
+        int iClient = iGhostPlayers[i];
+        int iActualClass = GetClientInfectedClass(iClient);
+
+        int iIndex = FindValueInArray(hFirstWaveClasses, iActualClass);
+
+        if (iIndex != -1)
+        {
+            RemoveFromArray(hFirstWaveClasses, iIndex);
+            bChecked[iClient] = true;
+        }
+    }
+
+    for (int i = 0; i < iGhostCount; i++)
+    {
+        int iClient = iGhostPlayers[i];
+
+        if (!bChecked[iClient] && GetArraySize(hFirstWaveClasses) > 0)
+        {
+            int iCorrectClass = GetArrayCell(hFirstWaveClasses, 0);
+            RemoveFromArray(hFirstWaveClasses, 0);
+
+            SetClientClass(iClient, iCorrectClass);
+        }
+    }
+
+    CloseHandle(hFirstWaveClasses);
 }
 
 /**
@@ -717,6 +771,7 @@ int GetNextClassFromQueue()
             continue;
         }
 
+
         return iNextClass;
     }
 
@@ -764,11 +819,9 @@ int GetInfectedCount(Filter filter, any data = INVALID_HANDLE)
 
     for (int iClient = 1; iClient <= MaxClients; iClient ++)
     {
-        if (!IsClientInGame(iClient) || !IsClientInfected(iClient)) {
-            continue;
-        }
-
-        if (!IsFakeClient(iClient) && !g_bInfectedWithClass[iClient]) {
+        if (!IsClientInGame(iClient)
+        || !IsClientInfected(iClient)
+        || !g_bInfectedWithClass[iClient]) {
             continue;
         }
 
